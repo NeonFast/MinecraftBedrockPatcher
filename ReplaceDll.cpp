@@ -1,192 +1,176 @@
-#include <windows.h>
 #include <iostream>
+#include <filesystem>
 #include <string>
-#include <tlhelp32.h>
-#include <shellapi.h>
-#include <fcntl.h>
-#include <io.h>
+#include <chrono>
+#include <windows.h>
+#include <locale>
+#include <codecvt>
 
-#pragma comment(lib, "shell32.lib")
+namespace fs = std::filesystem;
 
-// переменная для языка / variable for language
-bool isRussian = false;
+// просто структура хранения для переводов | just a structure for storing translations
+struct Messages {
+    std::string title;
+    std::string startReplace;
+    std::string checkingFile;
+    std::string fileNotFound;
+    std::string sourceFound;
+    std::string targetPath;
+    std::string replacing;
+    std::string success;
+    std::string error;
+    std::string processComplete;
+    std::string pressEnter;
+    std::string system32Replace;
+    std::string syswow64Replace;
+};
 
-// обнаружение языка / language detect
-void DetectLanguage() {
+// на рус | in ru
+Messages russianMessages = {
+    "ЗАМЕНА СИСТЕМНЫХ DLL",
+    "Начинаем замену DLL",
+    "Проверка файла",
+    "Файл не найден",
+    "Исходный файл найден",
+    "Целевой путь",
+    "Выполняется замена...",
+    "Файл успешно заменён! Время выполнения:",
+    "Ошибка при замене файла",
+    "Процесс замены завершён!",
+    "Нажмите Enter для выхода...",
+    "ЗАМЕНА В System32",
+    "ЗАМЕНА В SysWOW64"
+};
+
+// на англ | in eng
+Messages englishMessages = {
+    "REPLACING SYSTEM DLLs",
+    "Starting DLL replacement",
+    "Checking file",
+    "File not found",
+    "Source file found",
+    "Target path",
+    "Replacing...",
+    "File successfully replaced! Execution time:",
+    "Error replacing file",
+    "Replacement process completed!",
+    "Press Enter to exit...",
+    "REPLACING IN System32",
+    "REPLACING IN SysWOW64"
+};
+
+// глобалка для месседжов | global variable for messages
+Messages msgs;
+
+// определение языка | language detection
+bool isRussianLocale() {
     LANGID langId = GetSystemDefaultLangID();
-    LANGID primaryLang = PRIMARYLANGID(langId);
-    isRussian = (primaryLang == LANG_RUSSIAN);
+    return (langId == 0x0419); // 0x0419 русский | russian
 }
 
-// форс консоль / force console
-void ForceConsole() {
-    if (!AttachConsole(ATTACH_PARENT_PROCESS) && !AllocConsole()) {
+// инициализачия меседжов и переводов | initialization of messages and translations
+void initMessages() {
+    if (isRussianLocale()) {
+        msgs = russianMessages;
+    } else {
+        msgs = englishMessages;
+    }
+}
+
+// кодировка | encoding
+void printStatus(const std::string& message) {
+    std::cout << "[*] " << message << std::endl;
+}
+
+void printSuccess(const std::string& message) {
+    std::cout << "[+] " << message << std::endl;
+}
+
+void printError(const std::string& message) {
+    std::cerr << "[-] ";
+    if (isRussianLocale()) {
+        std::cerr << "ОШИБКА: ";
+    } else {
+        std::cerr << "ERROR: ";
+    }
+    std::cerr << message << std::endl;
+}
+
+void printSeparator() {
+    std::cout << "========================================" << std::endl;
+}
+
+void ReplaceDll(const fs::path& sourceDir, const fs::path& targetDir, const std::string& dllName) {
+    fs::path sourceFile = sourceDir / dllName;
+    fs::path targetFile = targetDir / dllName;
+
+    printStatus(msgs.checkingFile + ": " + sourceFile.string());
+    
+    if (!fs::exists(sourceFile)) {
+        printError(msgs.fileNotFound + ": " + sourceFile.string());
         return;
     }
+
+    printStatus(msgs.sourceFound + ": " + sourceFile.string());
+    printStatus(msgs.targetPath + ": " + targetFile.string());
+
+    try {
+        printStatus(msgs.replacing);
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        fs::copy_file(sourceFile, targetFile, fs::copy_options::overwrite_existing);
+        
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        
+        printSuccess(msgs.success + " " + std::to_string(duration.count()) + " ms");
+        printSuccess("New file: " + targetFile.string());
+    } catch (const fs::filesystem_error& e) {
+        printError(msgs.error + ": " + std::string(e.what()));
+    }
     
-    FILE* fp;
-    freopen_s(&fp, "CONOUT$", "w", stdout);
-    freopen_s(&fp, "CONIN$", "r", stdin);
-    freopen_s(&fp, "CONOUT$", "w", stderr);
-    
+    std::cout << std::endl;
+}
+
+int main() {
     // UTF-8
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
     
-    // очистка буфера / clear buffers
-    std::cout.clear();
-    std::wcout.clear();
-    std::cerr.clear();
-    std::wcerr.clear();
-}
-
-bool IsUserAnAdmin() {
-    BOOL isAdmin = FALSE;
-    PSID administratorsGroup = NULL;
+    // инициализация сообщений | messages initialization
+    initMessages();
     
-    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
+    printSeparator();
+    printStatus(msgs.title);
+    printSeparator();
     
-    if (AllocateAndInitializeSid(
-        &ntAuthority,
-        2,
-        SECURITY_BUILTIN_DOMAIN_RID,
-        DOMAIN_ALIAS_RID_ADMINS,
-        0, 0, 0, 0, 0, 0,
-        &administratorsGroup)) {
-        
-        CheckTokenMembership(NULL, administratorsGroup, &isAdmin);
-        FreeSid(administratorsGroup);
-    }
+    // пути | paths
+    fs::path system32 = "C:/Windows/System32";
+    fs::path syswow64 = "C:/Windows/SysWOW64";
+    fs::path dll32 = "dll32";
+    fs::path dll64 = "dll64";
+
+    // неймы дллок | dll names
+    std::string dllName = "Windows.ApplicationModel.Store.dll";
+
+    printStatus(msgs.startReplace + ": " + dllName);
+    std::cout << std::endl;
+
+    // замена 32 | replace 32
+    printStatus("=== " + msgs.system32Replace + " ===");
+    ReplaceDll(dll32, system32, dllName);
+
+    // замена 64 | replace 64
+    printStatus("=== " + msgs.syswow64Replace + " ===");
+    ReplaceDll(dll64, syswow64, dllName);
+
+    printSeparator();
+    printSuccess(msgs.processComplete);
+    printSeparator();
     
-    return isAdmin;
-}
-
-void ShowNotification(const std::wstring& title, const std::wstring& message) {
-    MessageBoxW(NULL, message.c_str(), title.c_str(), MB_OK | MB_ICONINFORMATION);
-}
-
-bool TerminateProcessByName(const std::wstring& processName) {
-    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (hSnapshot == INVALID_HANDLE_VALUE) {
-        return false;
-    }
-
-    PROCESSENTRY32W pe32;
-    pe32.dwSize = sizeof(PROCESSENTRY32W);
-
-    if (!Process32FirstW(hSnapshot, &pe32)) {
-        CloseHandle(hSnapshot);
-        return false;
-    }
-
-    bool found = false;
-    do {
-        if (processName == pe32.szExeFile) {
-            HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
-            if (hProcess) {
-                if (TerminateProcess(hProcess, 0)) {
-                    found = true;
-                }
-                CloseHandle(hProcess);
-            }
-        }
-    } while (Process32NextW(hSnapshot, &pe32));
-
-    CloseHandle(hSnapshot);
-    return found;
-}
-
-bool ReplaceFile(const std::wstring& source, const std::wstring& target) {
-    // проверка файла / check file
-    if (GetFileAttributesW(source.c_str()) == INVALID_FILE_ATTRIBUTES) {
-        return false;
-    }
+    // пауза для удобства чисто | pause for convenience only
+    printStatus(msgs.pressEnter);
+    std::cin.get();
     
-    // уборка атрибута а то не сработает / remove attribute or it won't work
-    SetFileAttributesW(target.c_str(), FILE_ATTRIBUTE_NORMAL);
-    
-    // копирование файла / copy file
-    if (!CopyFileW(source.c_str(), target.c_str(), FALSE)) {
-        return false;
-    }
-    
-    return true;
-}
-
-std::wstring GetExecutablePath() {
-    wchar_t buffer[MAX_PATH];
-    GetModuleFileNameW(NULL, buffer, MAX_PATH);
-    std::wstring::size_type pos = std::wstring(buffer).find_last_of(L"\\");
-    return std::wstring(buffer).substr(0, pos);
-}
-
-int main() {
-    // детект языка / detect language
-    DetectLanguage();
-    
-    // консоль / console
-    ForceConsole();
-    
-    // права админа? / admin rights?
-    if (!IsUserAnAdmin()) {
-        if (isRussian) {
-            ShowNotification(L"Ошибка", L"От прав админа запускать надо.");
-        } else {
-            ShowNotification(L"Error", L"Run as administrator required.");
-        }
-        system("pause");
-        return 1;
-    }
-
-    // микрософт сторе / microsoft store
-    int terminatedCount = 0;
-    std::wstring processes[] = {L"WinStore.App.exe", L"Microsoft.WindowsStore.exe", 
-                               L"StoreExperienceHost.exe", L"ApplicationFrameHost.exe"};
-    
-    for (const auto& process : processes) {
-        TerminateProcessByName(process);
-    }
-    
-    Sleep(2000);
-
-    std::wstring exePath = GetExecutablePath();
-
-    std::wstring source64 = exePath + L"\\dll64\\Windows.ApplicationModel.Store.dll";
-    std::wstring source32 = exePath + L"\\dll32\\Windows.ApplicationModel.Store.dll";
-
-    std::wstring target64 = L"C:\\Windows\\System32\\Windows.ApplicationModel.Store.dll";
-    std::wstring target32 = L"C:\\Windows\\SysWOW64\\Windows.ApplicationModel.Store.dll";
-
-    int successCount = 0;
-    int totalFiles = 2;
-
-    // 64 длл / 64 dll
-    if (ReplaceFile(source64, target64)) {
-        successCount++;
-    }
-
-    // 32 длл / 32 dll
-    if (ReplaceFile(source32, target32)) {
-        successCount++;
-    }
-
-    // результаты / results
-    if (successCount == totalFiles) {
-        if (isRussian) {
-            ShowNotification(L"Ура", L"Файлы заменены.");
-        } else {
-            ShowNotification(L"Success", L"Files replaced successfully.");
-        }
-    } else {
-        if (isRussian) {
-            ShowNotification(L"Пиздец", L"Не, ну ты лох.");
-        } else {
-            ShowNotification(L"Error", L"Failed to replace files.");
-        }
-        system("pause");
-        return 1;
-    }
-
-    system("pause");
     return 0;
 }
