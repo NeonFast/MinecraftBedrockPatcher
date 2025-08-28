@@ -12,5 +12,5 @@ Very simple app, whose just changing dlls, but use if you are lazy xd
 - Вам нужен аккаунт Microsoft, чтобы скачать Minecraft  
 - Скачайте из **Microsoft Store** демо-версию **Minecraft for Windows**  
 - После загрузки **НЕ ЗАПУСКАЙТЕ MINECRAFT** (также не закрывайте MS Store)  
-- Скачайте **MinecraftBedrockPatcher**, запустите ReplaceDll.exe — и готово!  
+- Скачайте **MinecraftBedrockPatcher**, запустите ReplaceDll.exe и готово!  
 
