@@ -1,4 +1,4 @@
-﻿#include <iostream>
+#include <iostream>
 #include <filesystem>
 #include <string>
 #include <chrono>
@@ -13,7 +13,7 @@
 
 namespace fs = std::filesystem;
 
-// Функция для включения привилегии
+// включение привилегий
 bool EnablePrivilege(LPCTSTR lpszPrivilege) {
     HANDLE hToken = nullptr;
     TOKEN_PRIVILEGES tp;
@@ -39,7 +39,7 @@ bool EnablePrivilege(LPCTSTR lpszPrivilege) {
     return result;
 }
 
-// Функция для получения SID текущего пользователя
+// получение sid юзера
 PSID GetUserSid() {
     HANDLE hToken = nullptr;
     PTOKEN_USER pTokenUser = nullptr;
@@ -75,21 +75,21 @@ PSID GetUserSid() {
     return pSid;
 }
 
-// Функция для установки владения файлом
+// функция для максимум прав
 bool TakeOwnership(const std::wstring& filePath) {
     // Включаем необходимые привилегии
     EnablePrivilege(SE_TAKE_OWNERSHIP_NAME);
     EnablePrivilege(SE_RESTORE_NAME);
     EnablePrivilege(SE_BACKUP_NAME);
 
-    // Открываем файл с максимальными правами
+    // максимум прав
     HANDLE hFile = CreateFileW(
         filePath.c_str(),
         READ_CONTROL | WRITE_DAC | WRITE_OWNER,
         0,
         nullptr,
         OPEN_EXISTING,
-        FILE_FLAG_BACKUP_SEMANTICS,  // Для работы с системными файлами
+        FILE_FLAG_BACKUP_SEMANTICS,  // для системных файлов
         nullptr
     );
 
@@ -105,7 +105,7 @@ bool TakeOwnership(const std::wstring& filePath) {
         return false;
     }
 
-    // Установка владельца
+    // установка владельца да
     DWORD result = SetSecurityInfo(
         hFile,
         SE_FILE_OBJECT,
@@ -123,7 +123,7 @@ bool TakeOwnership(const std::wstring& filePath) {
         return false;
     }
 
-    // Назначение полных прав для текущего пользователя
+    // выдача полных прав на файл
     PACL pOldDACL = nullptr, pNewDACL = nullptr;
     PSECURITY_DESCRIPTOR pSD = nullptr;
 
@@ -154,7 +154,7 @@ bool TakeOwnership(const std::wstring& filePath) {
     return (result == ERROR_SUCCESS);
 }
 
-// Функция для отключения File System Redirection
+// отключатель file system reditection
 void DisableRedirection(PVOID* OldValue) {
     *OldValue = nullptr;
 
@@ -178,7 +178,7 @@ void DisableRedirection(PVOID* OldValue) {
 #pragma warning(pop)
 }
 
-// Функция для восстановления File System Redirection
+// для восстановления file system redirection
 void RevertRedirection(PVOID OldValue) {
     if (OldValue == nullptr) return;
 
@@ -198,7 +198,7 @@ void RevertRedirection(PVOID OldValue) {
 #pragma warning(pop)
 }
 
-// Функция для поиска процессов, использующих файл
+// поиск процессов которые используют файл
 std::vector<DWORD> FindProcessesUsingFile(const std::wstring& fileName) {
     std::vector<DWORD> processIds;
 
@@ -242,7 +242,7 @@ std::vector<DWORD> FindProcessesUsingFile(const std::wstring& fileName) {
     return processIds;
 }
 
-// Функция для получения имени процесса по ID
+// получение pid процесса
 std::wstring GetProcessName(DWORD processId) {
     HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processId);
     if (hProcess == NULL) {
@@ -266,7 +266,7 @@ std::wstring GetProcessName(DWORD processId) {
     return L"Unknown";
 }
 
-// Функция для завершения процесса
+// завершение процесса (функция)
 bool TerminateProcessById(DWORD processId) {
     HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, processId);
     if (hProcess == NULL) {
@@ -278,7 +278,7 @@ bool TerminateProcessById(DWORD processId) {
     return result;
 }
 
-// Улучшенная функция замены с take ownership и закрытием процессов
+// улучшенная версия
 bool ReplaceDllWithOwnership(const fs::path& sourceDir, const fs::path& targetDir, const std::string& dllName) {
     fs::path sourceFile = sourceDir / dllName;
     fs::path targetFile = targetDir / dllName;
@@ -293,7 +293,7 @@ bool ReplaceDllWithOwnership(const fs::path& sourceDir, const fs::path& targetDi
     std::wcout << L"[*] Source file found: " << sourceFile.wstring() << std::endl;
     std::wcout << L"[*] Target path: " << targetFile.wstring() << std::endl;
 
-    // Проверяем, используется ли файл
+    // проверка на использование файла
     std::wstring fileName(dllName.begin(), dllName.end());
     std::vector<DWORD> processes = FindProcessesUsingFile(fileName);
 
@@ -313,14 +313,14 @@ bool ReplaceDllWithOwnership(const fs::path& sourceDir, const fs::path& targetDi
             }
         }
 
-        // Ждем немного, чтобы процессы действительно завершились
+        // тянем время
         Sleep(1000);
     }
 
     try {
         std::wcout << L"[*] Taking ownership and setting permissions..." << std::endl;
 
-        // Получаем владение файлом
+        // я владелец буду
         if (!TakeOwnership(targetFile.wstring())) {
             std::wcout << L"[-] WARNING: Failed to take ownership of " << targetFile.wstring() << std::endl;
         }
@@ -328,13 +328,13 @@ bool ReplaceDllWithOwnership(const fs::path& sourceDir, const fs::path& targetDi
         std::wcout << L"[*] Replacing..." << std::endl;
         auto start = std::chrono::high_resolution_clock::now();
 
-        // Отключаем редирект для 32-битных приложений
+        // отключение редиректа 32
         PVOID OldValue = nullptr;
         DisableRedirection(&OldValue);
 
         fs::copy_file(sourceFile, targetFile, fs::copy_options::overwrite_existing);
 
-        // Восстанавливаем редирект
+        // восстановление редиректа
         RevertRedirection(OldValue);
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -358,7 +358,7 @@ int main() {
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 
-    // Проверяем права администратора
+    // проверка на админа
     EnablePrivilege(SE_DEBUG_NAME);
 
     std::wcout << L"========================================" << std::endl;
